@@ -9,9 +9,6 @@ namespace WindowsFormsApp1
     public partial class MainForm : Form
     {
         private static bool isProductEditorOpened;
-        private DataGridView productsGrid;
-        private Button addProductButton;
-        private Button deleteProductButton;
 
         public MainForm()
         {
@@ -33,50 +30,16 @@ namespace WindowsFormsApp1
         private void BuildProductGrid()
         {
             Text = "Список товаров";
-            Main_Panel.Visible = false;
-            productsGrid = new DataGridView
-            {
-                Location = Main_Panel.Location,
-                Size = Main_Panel.Size,
-                ReadOnly = true,
-                AllowUserToAddRows = false,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-                MultiSelect = false
-            };
-            productsGrid.CellDoubleClick += ProductsGrid_CellDoubleClick;
-            productsGrid.RowPrePaint += ProductsGrid_RowPrePaint;
-            Controls.Add(productsGrid);
-
-            addProductButton = CreateSideButton("Добавить товар", 270);
-            addProductButton.Click += AddProductButton_Click;
-            Controls.Add(addProductButton);
-
-            deleteProductButton = CreateSideButton("Удалить товар", 320);
-            deleteProductButton.BackColor = Color.FromArgb(190, 60, 60);
-            deleteProductButton.Click += DeleteProductButton_Click;
-            Controls.Add(deleteProductButton);
-        }
-
-        private Button CreateSideButton(string text, int top)
-        {
-            return new Button
-            {
-                Text = text,
-                Location = new Point(1140, top),
-                Size = new Size(200, 40),
-                BackColor = Color.FromArgb(50, 120, 220),
-                FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.White,
-                Font = new Font("Segoe UI", 10F, FontStyle.Bold)
-            };
         }
 
         private void MainForms_Load(object sender, EventArgs e)
         {
-            lblWelcome.Text = Session.DisplayName + (Session.IsGuest ? "" : " (" + Session.UserRoleName + ")");
+            lblWelcome.Text = "Пользователь: " + Session.DisplayName;
+            role_label.Text = Session.IsGuest ? "Роль: гость" : "Роль: " + Session.UserRoleName;
             search_textbox.Visible = Session.IsAdmin || Session.IsManager;
+            search_label.Visible = Session.IsAdmin || Session.IsManager;
             Sort_combobox.Visible = Session.IsAdmin || Session.IsManager;
+            sort_label.Visible = Session.IsAdmin || Session.IsManager;
             filter_label.Visible = Session.IsAdmin || Session.IsManager;
             filter_supplier_combobox.Visible = Session.IsAdmin || Session.IsManager;
             open_orders_button.Visible = Session.IsAdmin || Session.IsManager;
@@ -144,11 +107,18 @@ namespace WindowsFormsApp1
         private void ProductsGrid_RowPrePaint(object sender, DataGridViewRowPrePaintEventArgs e)
         {
             var row = productsGrid.Rows[e.RowIndex];
-            int count = Convert.ToInt32(row.Cells["Количество"].Value == DBNull.Value ? 0 : row.Cells["Количество"].Value);
-            int sale = Convert.ToInt32(row.Cells["Скидка"].Value == DBNull.Value ? 0 : row.Cells["Скидка"].Value);
+            int count = ToInt(row.Cells["Количество"].Value);
+            int sale = ToInt(row.Cells["Скидка"].Value);
             row.DefaultCellStyle.BackColor = count <= 0 ? Color.LightBlue : sale > 17 ? ColorTranslator.FromHtml("#FFDEAD") : Color.White;
             row.Cells["Цена"].Style.ForeColor = sale > 0 ? Color.Red : Color.Black;
             row.Cells["Цена"].Style.Font = sale > 0 ? new Font(productsGrid.Font, FontStyle.Strikeout) : productsGrid.Font;
+        }
+
+        private int ToInt(object value)
+        {
+            if (value == null || value == DBNull.Value) return 0;
+            int result;
+            return int.TryParse(value.ToString(), out result) ? result : 0;
         }
 
         private void ProductsGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
