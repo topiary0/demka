@@ -13,6 +13,7 @@
         private System.Windows.Forms.ComboBox filter_supplier_combobox;
         private System.Windows.Forms.DataGridView productsGrid;
         private System.Windows.Forms.Button addProductButton;
+        private System.Windows.Forms.Button editProductButton;
         private System.Windows.Forms.Button deleteProductButton;
         private System.Windows.Forms.Label search_label;
         private System.Windows.Forms.Label sort_label;
@@ -37,6 +38,7 @@
             this.filter_supplier_combobox = new System.Windows.Forms.ComboBox();
             this.productsGrid = new System.Windows.Forms.DataGridView();
             this.addProductButton = new System.Windows.Forms.Button();
+            this.editProductButton = new System.Windows.Forms.Button();
             this.deleteProductButton = new System.Windows.Forms.Button();
             this.search_label = new System.Windows.Forms.Label();
             this.sort_label = new System.Windows.Forms.Label();
@@ -175,13 +177,27 @@
             this.addProductButton.UseVisualStyleBackColor = false;
             this.addProductButton.Click += new System.EventHandler(this.AddProductButton_Click);
 
+
+            // editProductButton
+            this.editProductButton.BackColor = System.Drawing.Color.FromArgb(50, 120, 220);
+            this.editProductButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.editProductButton.FlatAppearance.BorderSize = 0;
+            this.editProductButton.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+            this.editProductButton.ForeColor = System.Drawing.Color.White;
+            this.editProductButton.Location = new System.Drawing.Point(1140, 400);
+            this.editProductButton.Name = "editProductButton";
+            this.editProductButton.Size = new System.Drawing.Size(200, 40);
+            this.editProductButton.Text = "Редактировать товар";
+            this.editProductButton.UseVisualStyleBackColor = false;
+            this.editProductButton.Click += new System.EventHandler(this.EditProductButton_Click);
+
             // deleteProductButton
             this.deleteProductButton.BackColor = System.Drawing.Color.FromArgb(190, 60, 60);
             this.deleteProductButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.deleteProductButton.FlatAppearance.BorderSize = 0;
             this.deleteProductButton.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
             this.deleteProductButton.ForeColor = System.Drawing.Color.White;
-            this.deleteProductButton.Location = new System.Drawing.Point(1140, 400);
+            this.deleteProductButton.Location = new System.Drawing.Point(1140, 450);
             this.deleteProductButton.Name = "deleteProductButton";
             this.deleteProductButton.Size = new System.Drawing.Size(200, 40);
             this.deleteProductButton.Text = "Удалить товар";
@@ -203,6 +219,7 @@
             this.ClientSize = new System.Drawing.Size(1380, 800);
             this.Controls.Add(this.role_label);
             this.Controls.Add(this.deleteProductButton);
+            this.Controls.Add(this.editProductButton);
             this.Controls.Add(this.addProductButton);
             this.Controls.Add(this.sort_label);
             this.Controls.Add(this.search_label);

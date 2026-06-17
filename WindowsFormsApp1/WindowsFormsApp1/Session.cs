@@ -8,9 +8,9 @@ namespace WindowsFormsApp1
         public static string UserRoleName { get; set; }
 
         public static bool IsGuest => string.IsNullOrEmpty(UserLogin);
-        public static bool IsAdmin => HasRole("администратор", "admin");
-        public static bool IsManager => HasRole("менеджер", "manager");
-        public static bool IsClient => !IsGuest && HasRole("клиент", "client", "покупатель");
+        public static bool IsAdmin => HasRole("администратор", "админ", "admin") || (string.IsNullOrWhiteSpace(UserRoleName) && UserRoleId == 1);
+        public static bool IsManager => HasRole("менеджер", "manager") || (string.IsNullOrWhiteSpace(UserRoleName) && UserRoleId == 2);
+        public static bool IsClient => !IsGuest && (HasRole("клиент", "client", "покупатель") || (string.IsNullOrWhiteSpace(UserRoleName) && UserRoleId == 3));
 
         private static bool HasRole(params string[] names)
         {

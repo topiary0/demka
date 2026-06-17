@@ -34,8 +34,9 @@ namespace WindowsFormsApp1
 
         private void MainForms_Load(object sender, EventArgs e)
         {
-            lblWelcome.Text = "Пользователь: " + Session.DisplayName;
-            role_label.Text = Session.IsGuest ? "Роль: гость" : "Роль: " + Session.UserRoleName;
+            string roleText = Session.IsGuest ? "гость" : string.IsNullOrWhiteSpace(Session.UserRoleName) ? "роль ID " + Session.UserRoleId : Session.UserRoleName;
+            lblWelcome.Text = "Пользователь: " + Session.DisplayName + " | Роль: " + roleText;
+            role_label.Text = GetRoleHint();
             search_textbox.Visible = Session.IsAdmin || Session.IsManager;
             search_label.Visible = Session.IsAdmin || Session.IsManager;
             Sort_combobox.Visible = Session.IsAdmin || Session.IsManager;
@@ -45,6 +46,7 @@ namespace WindowsFormsApp1
             open_orders_button.Visible = Session.IsAdmin || Session.IsManager;
             open_orders_button.Text = "Заказы";
             addProductButton.Visible = Session.IsAdmin;
+            editProductButton.Visible = Session.IsAdmin;
             deleteProductButton.Visible = Session.IsAdmin;
             LoadSuppliers();
             RefreshGoods();
@@ -124,12 +126,7 @@ namespace WindowsFormsApp1
         private void ProductsGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
             if (e.RowIndex < 0) return;
-            if (!Session.IsAdmin) { MessageBox.Show("Редактировать товары может только администратор.", "Доступ запрещен", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-            if (isProductEditorOpened) { MessageBox.Show("Уже открыто окно редактирования товара. Сначала закройте его.", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
-            isProductEditorOpened = true;
-            using (var form = new ProductEditForm(productsGrid.Rows[e.RowIndex].Cells["Артикул"].Value.ToString())) form.ShowDialog();
-            isProductEditorOpened = false;
-            RefreshGoods();
+            EditSelectedProduct();
         }
 
         private void AddProductButton_Click(object sender, EventArgs e)
@@ -140,6 +137,30 @@ namespace WindowsFormsApp1
             using (var form = new ProductEditForm(null)) form.ShowDialog();
             isProductEditorOpened = false;
             RefreshGoods();
+        }
+
+        private void EditProductButton_Click(object sender, EventArgs e)
+        {
+            EditSelectedProduct();
+        }
+
+        private void EditSelectedProduct()
+        {
+            if (!Session.IsAdmin) { MessageBox.Show("Редактировать товары может только администратор.", "Доступ запрещен", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (productsGrid.CurrentRow == null) { MessageBox.Show("Выберите товар в таблице для редактирования.", "Редактирование товара", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            if (isProductEditorOpened) { MessageBox.Show("Уже открыто окно редактирования товара. Сначала закройте его.", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            isProductEditorOpened = true;
+            using (var form = new ProductEditForm(productsGrid.CurrentRow.Cells["Артикул"].Value.ToString())) form.ShowDialog();
+            isProductEditorOpened = false;
+            RefreshGoods();
+        }
+
+        private string GetRoleHint()
+        {
+            if (Session.IsAdmin) return "Доступ: товары (просмотр/поиск/сортировка/фильтр/добавление/редактирование/удаление), заказы (просмотр/добавление/редактирование/удаление).";
+            if (Session.IsManager) return "Доступ: товары (просмотр/поиск/сортировка/фильтр), заказы (просмотр).";
+            if (Session.IsClient) return "Доступ: просмотр списка товаров.";
+            return "Доступ: гостевой просмотр списка товаров.";
         }
 
         private void DeleteProductButton_Click(object sender, EventArgs e)
