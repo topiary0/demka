@@ -29,7 +29,7 @@ namespace WindowsFormsApp1
             else
             {
                 articleBox.Visible = false;
-                Controls.Add(new Label { Text = "Артикул будет создан автоматически при сохранении", Location = new Point(170, 20), Size = new Size(360, 22) });
+                autoArticleLabel.Visible = true;
             }
         }
 
