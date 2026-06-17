@@ -26,6 +26,7 @@ namespace WindowsFormsApp1
                 Session.UserLogin = user["login"].ToString();
                 Session.UserFullName = user.Table.Columns.Contains("name") ? user["name"].ToString() : user["full_name"].ToString();
                 Session.UserRoleId = Convert.ToInt32(user["role"]);
+                if (user.Table.Columns.Contains("role_name")) Session.UserRoleName = user["role_name"].ToString();
             }
         }
 
@@ -73,12 +74,13 @@ namespace WindowsFormsApp1
 
         private void MainForms_Load(object sender, EventArgs e)
         {
-            lblWelcome.Text = Session.IsGuest ? "Гость" : Session.UserFullName;
+            lblWelcome.Text = Session.DisplayName + (Session.IsGuest ? "" : " (" + Session.UserRoleName + ")");
             search_textbox.Visible = Session.IsAdmin || Session.IsManager;
             Sort_combobox.Visible = Session.IsAdmin || Session.IsManager;
             filter_label.Visible = Session.IsAdmin || Session.IsManager;
             filter_supplier_combobox.Visible = Session.IsAdmin || Session.IsManager;
             open_orders_button.Visible = Session.IsAdmin || Session.IsManager;
+            open_orders_button.Text = "Заказы";
             addProductButton.Visible = Session.IsAdmin;
             deleteProductButton.Visible = Session.IsAdmin;
             LoadSuppliers();
@@ -110,7 +112,8 @@ namespace WindowsFormsApp1
             {
                 string sql = @"select t.article as [Артикул], t.picture as [Фото], t.name as [Наименование], c.name as [Категория], t.describe as [Описание],
                        m.name as [Производитель], s.name as [Поставщик], t.price as [Цена], t.measurment as [Ед. изм.],
-                       t.warehouse as [Количество], t.sale as [Скидка]
+                       t.warehouse as [Количество], t.sale as [Скидка],
+                       case when isnull(t.sale,0) > 0 then t.price * (100 - t.sale) / 100 else t.price end as [Итоговая цена]
                        from tovar t
                        left join category c on c.id = t.category
                        left join manufacture m on m.id = t.manufacture
@@ -150,7 +153,9 @@ namespace WindowsFormsApp1
 
         private void ProductsGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            if (!Session.IsAdmin || e.RowIndex < 0 || isProductEditorOpened) return;
+            if (e.RowIndex < 0) return;
+            if (!Session.IsAdmin) { MessageBox.Show("Редактировать товары может только администратор.", "Доступ запрещен", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (isProductEditorOpened) { MessageBox.Show("Уже открыто окно редактирования товара. Сначала закройте его.", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
             isProductEditorOpened = true;
             using (var form = new ProductEditForm(productsGrid.Rows[e.RowIndex].Cells["Артикул"].Value.ToString())) form.ShowDialog();
             isProductEditorOpened = false;
@@ -159,7 +164,8 @@ namespace WindowsFormsApp1
 
         private void AddProductButton_Click(object sender, EventArgs e)
         {
-            if (isProductEditorOpened) return;
+            if (!Session.IsAdmin) { MessageBox.Show("Добавлять товары может только администратор.", "Доступ запрещен", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (isProductEditorOpened) { MessageBox.Show("Уже открыто окно редактирования товара. Сначала закройте его.", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
             isProductEditorOpened = true;
             using (var form = new ProductEditForm(null)) form.ShowDialog();
             isProductEditorOpened = false;
@@ -168,6 +174,7 @@ namespace WindowsFormsApp1
 
         private void DeleteProductButton_Click(object sender, EventArgs e)
         {
+            if (!Session.IsAdmin) { MessageBox.Show("Удалять товары может только администратор.", "Доступ запрещен", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
             if (productsGrid.CurrentRow == null) return;
             string article = productsGrid.CurrentRow.Cells["Артикул"].Value.ToString();
             if (Database.Query("select id from orders where article=@article", new SqlParameter("@article", article)).Rows.Count > 0)

@@ -10,6 +10,7 @@ namespace WindowsFormsApp1
     public class ProductEditForm : Form
     {
         private readonly string article;
+        private string originalImagePath;
         private TextBox articleBox = new TextBox(), nameBox = new TextBox(), measureBox = new TextBox(), priceBox = new TextBox(), countBox = new TextBox(), saleBox = new TextBox(), imageBox = new TextBox();
         private TextBox descriptionBox = new TextBox();
         private ComboBox categoryBox = new ComboBox(), manufactureBox = new ComboBox(), supplierBox = new ComboBox();
@@ -23,6 +24,7 @@ namespace WindowsFormsApp1
             BuildForm();
             LoadDictionaries();
             if (article != null) LoadProduct();
+            else { articleBox.Text = GetNextArticle(); articleBox.ReadOnly = true; }
         }
 
         private void BuildForm()
@@ -83,6 +85,7 @@ namespace WindowsFormsApp1
             countBox.Text = row["warehouse"].ToString();
             saleBox.Text = row["sale"].ToString();
             imageBox.Text = row["picture"].ToString();
+            originalImagePath = imageBox.Text;
             categoryBox.SelectedValue = row["category"];
             manufactureBox.SelectedValue = row["manufacture"];
             supplierBox.SelectedValue = row["supplier"];
@@ -95,10 +98,11 @@ namespace WindowsFormsApp1
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     Directory.CreateDirectory(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images"));
-                    string target = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images", Path.GetFileName(dialog.FileName));
+                    string fileName = Path.GetFileNameWithoutExtension(dialog.FileName) + "_" + DateTime.Now.ToString("yyyyMMddHHmmss") + Path.GetExtension(dialog.FileName);
+                    string target = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images", fileName);
                     using (var image = Image.FromFile(dialog.FileName))
                     using (var resized = new Bitmap(image, new Size(300, 200))) resized.Save(target);
-                    imageBox.Text = Path.Combine("Images", Path.GetFileName(dialog.FileName));
+                    imageBox.Text = Path.Combine("Images", fileName);
                 }
             }
         }
@@ -108,8 +112,29 @@ namespace WindowsFormsApp1
             if (string.IsNullOrWhiteSpace(articleBox.Text) || string.IsNullOrWhiteSpace(nameBox.Text)) { MessageBox.Show("Заполните артикул и наименование.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
             if (!decimal.TryParse(priceBox.Text, out decimal price) || price < 0 || !int.TryParse(countBox.Text, out int count) || count < 0 || !int.TryParse(saleBox.Text, out int sale) || sale < 0) { MessageBox.Show("Цена, количество и скидка должны быть неотрицательными числами.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
             string sql = article == null ? "insert into tovar(article,name,category,describe,manufacture,supplier,price,measurment,warehouse,sale,picture) values(@a,@n,@c,@d,@m,@s,@p,@me,@w,@sale,@pic)" : "update tovar set name=@n,category=@c,describe=@d,manufacture=@m,supplier=@s,price=@p,measurment=@me,warehouse=@w,sale=@sale,picture=@pic where article=@a";
-            Database.Execute(sql, new SqlParameter("@a", articleBox.Text), new SqlParameter("@n", nameBox.Text), new SqlParameter("@c", categoryBox.SelectedValue), new SqlParameter("@d", descriptionBox.Text), new SqlParameter("@m", manufactureBox.SelectedValue), new SqlParameter("@s", supplierBox.SelectedValue), new SqlParameter("@p", price), new SqlParameter("@me", measureBox.Text), new SqlParameter("@w", count), new SqlParameter("@sale", sale), new SqlParameter("@pic", imageBox.Text));
-            DialogResult = DialogResult.OK;
+            try
+            {
+                Database.Execute(sql, new SqlParameter("@a", articleBox.Text), new SqlParameter("@n", nameBox.Text), new SqlParameter("@c", categoryBox.SelectedValue), new SqlParameter("@d", descriptionBox.Text), new SqlParameter("@m", manufactureBox.SelectedValue), new SqlParameter("@s", supplierBox.SelectedValue), new SqlParameter("@p", price), new SqlParameter("@me", measureBox.Text), new SqlParameter("@w", count), new SqlParameter("@sale", sale), new SqlParameter("@pic", imageBox.Text));
+                DeleteOldImageIfReplaced();
+                DialogResult = DialogResult.OK;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Не удалось сохранить товар. Проверьте заполнение полей и подключение к БД.\n" + ex.Message, "Ошибка сохранения", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
+        private string GetNextArticle()
+        {
+            object value = Database.Query("select isnull(max(try_convert(int, article)), 0) + 1 as next_article from tovar").Rows[0]["next_article"];
+            return value.ToString();
+        }
+
+        private void DeleteOldImageIfReplaced()
+        {
+            if (string.IsNullOrWhiteSpace(originalImagePath) || originalImagePath == imageBox.Text) return;
+            string fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, originalImagePath);
+            if (File.Exists(fullPath)) File.Delete(fullPath);
+        }
+
     }
 }
