@@ -1,47 +1,22 @@
 using System;
 using System.Data.SqlClient;
-using System.Drawing;
 using System.Windows.Forms;
 
 namespace WindowsFormsApp1
 {
-    public class OrderEditForm : Form
+    public partial class OrderEditForm : Form
     {
         private readonly int? id;
-        private ComboBox articleBox = new ComboBox(), statusBox = new ComboBox(), addressBox = new ComboBox();
-        private DateTimePicker dateBox = new DateTimePicker(), deliveryBox = new DateTimePicker();
+
         public OrderEditForm(int? id)
         {
             this.id = id;
+            InitializeComponent();
             Text = id.HasValue ? "Редактирование заказа" : "Добавление заказа";
-            Size = new Size(520, 330);
-            StartPosition = FormStartPosition.CenterParent;
-            Build();
+            saveButton.Click += Save_Click;
+            cancelButton.Click += (s, e) => Close();
             LoadDictionaries();
             if (id.HasValue) LoadOrder();
-        }
-
-        private void Build()
-        {
-            int y = 20;
-            AddRow("Артикул", articleBox, ref y);
-            AddRow("Статус", statusBox, ref y);
-            AddRow("Адрес пункта выдачи", addressBox, ref y);
-            AddRow("Дата заказа", dateBox, ref y);
-            AddRow("Дата выдачи", deliveryBox, ref y);
-            var save = new Button { Text = "Сохранить", Location = new Point(200, y + 10), Size = new Size(120, 36) };
-            save.Click += Save_Click;
-            Controls.Add(save);
-            articleBox.DropDownStyle = statusBox.DropDownStyle = addressBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        }
-
-        private void AddRow(string label, Control control, ref int y)
-        {
-            Controls.Add(new Label { Text = label, Location = new Point(20, y + 4), Size = new Size(160, 24) });
-            control.Location = new Point(190, y);
-            control.Size = new Size(260, 26);
-            Controls.Add(control);
-            y += 42;
         }
 
         private void LoadDictionaries()
@@ -63,9 +38,22 @@ namespace WindowsFormsApp1
 
         private void Save_Click(object sender, EventArgs e)
         {
+            if (deliveryBox.Value.Date < dateBox.Value.Date)
+            {
+                MessageBox.Show("Дата выдачи не может быть раньше даты заказа.", "Ошибка ввода", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             string sql = id.HasValue ? "update orders set article=@a,status=@s,address=@ad,date=@d,delivery_date=@dd where id=@id" : "insert into orders(article,status,address,date,delivery_date,count,login,code) values(@a,@s,@ad,@d,@dd,1,@login,0)";
-            Database.Execute(sql, new SqlParameter("@a", articleBox.SelectedValue), new SqlParameter("@s", statusBox.SelectedValue), new SqlParameter("@ad", addressBox.SelectedValue), new SqlParameter("@d", dateBox.Value), new SqlParameter("@dd", deliveryBox.Value), new SqlParameter("@login", (object)Session.UserLogin ?? DBNull.Value), new SqlParameter("@id", (object)id ?? DBNull.Value));
-            DialogResult = DialogResult.OK;
+            try
+            {
+                Database.Execute(sql, new SqlParameter("@a", articleBox.SelectedValue), new SqlParameter("@s", statusBox.SelectedValue), new SqlParameter("@ad", addressBox.SelectedValue), new SqlParameter("@d", dateBox.Value), new SqlParameter("@dd", deliveryBox.Value), new SqlParameter("@login", (object)Session.UserLogin ?? DBNull.Value), new SqlParameter("@id", (object)id ?? DBNull.Value));
+                DialogResult = DialogResult.OK;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Не удалось сохранить заказ. Проверьте заполнение полей и подключение к БД.\n" + ex.Message, "Ошибка сохранения", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

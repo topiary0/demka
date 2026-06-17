@@ -7,64 +7,44 @@ using System.Windows.Forms;
 
 namespace WindowsFormsApp1
 {
-    public class ProductEditForm : Form
+    public partial class ProductEditForm : Form
     {
         private readonly string article;
         private string originalImagePath;
-        private TextBox articleBox = new TextBox(), nameBox = new TextBox(), measureBox = new TextBox(), priceBox = new TextBox(), countBox = new TextBox(), saleBox = new TextBox(), imageBox = new TextBox();
-        private TextBox descriptionBox = new TextBox();
-        private ComboBox categoryBox = new ComboBox(), manufactureBox = new ComboBox(), supplierBox = new ComboBox();
 
         public ProductEditForm(string article)
         {
             this.article = article;
+            InitializeComponent();
             Text = article == null ? "Добавление товара" : "Редактирование товара";
-            Size = new Size(650, 620);
-            StartPosition = FormStartPosition.CenterParent;
-            BuildForm();
+            chooseImageButton.Click += Choose_Click;
+            saveButton.Click += Save_Click;
+            cancelButton.Click += (s, e) => Close();
             LoadDictionaries();
-            if (article != null) LoadProduct();
-            else { articleBox.Text = GetNextArticle(); articleBox.ReadOnly = true; }
-        }
 
-        private void BuildForm()
-        {
-            int y = 20;
-            AddRow("Артикул", articleBox, ref y);
-            AddRow("Наименование", nameBox, ref y);
-            AddRow("Категория", categoryBox, ref y);
-            AddRow("Описание", descriptionBox, ref y); descriptionBox.Height = 60; y += 35;
-            AddRow("Производитель", manufactureBox, ref y);
-            AddRow("Поставщик", supplierBox, ref y);
-            AddRow("Цена", priceBox, ref y);
-            AddRow("Ед. измерения", measureBox, ref y);
-            AddRow("Количество", countBox, ref y);
-            AddRow("Скидка", saleBox, ref y);
-            AddRow("Фото", imageBox, ref y);
-            var choose = new Button { Text = "Выбрать фото", Location = new Point(460, y - 35), Size = new Size(120, 28) };
-            choose.Click += Choose_Click;
-            Controls.Add(choose);
-            var save = new Button { Text = "Сохранить", Location = new Point(260, y + 20), Size = new Size(120, 36) };
-            save.Click += Save_Click;
-            Controls.Add(save);
-            articleBox.ReadOnly = article != null;
-            categoryBox.DropDownStyle = manufactureBox.DropDownStyle = supplierBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        }
-
-        private void AddRow(string label, Control control, ref int y)
-        {
-            Controls.Add(new Label { Text = label, Location = new Point(20, y + 4), Size = new Size(130, 24) });
-            control.Location = new Point(160, y);
-            control.Size = new Size(280, 26);
-            Controls.Add(control);
-            y += 38;
+            if (article != null)
+            {
+                LoadProduct();
+            }
+            else
+            {
+                articleBox.Visible = false;
+                Controls.Add(new Label { Text = "Артикул будет создан автоматически при сохранении", Location = new Point(170, 20), Size = new Size(360, 22) });
+            }
         }
 
         private void LoadDictionaries()
         {
-            FillCombo(categoryBox, "select id, name from category order by name");
-            FillCombo(manufactureBox, "select id, name from manufacture order by name");
-            FillCombo(supplierBox, "select id, name from supplier order by name");
+            try
+            {
+                FillCombo(categoryBox, "select id, name from category order by name");
+                FillCombo(manufactureBox, "select id, name from manufacture order by name");
+                FillCombo(supplierBox, "select id, name from supplier order by name");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Не удалось загрузить справочники товара. Проверьте подключение к БД.\n" + ex.Message, "Ошибка загрузки", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void FillCombo(ComboBox combo, string sql)
@@ -76,45 +56,81 @@ namespace WindowsFormsApp1
 
         private void LoadProduct()
         {
-            var row = Database.Query("select * from tovar where article=@article", new SqlParameter("@article", article)).Rows[0];
-            articleBox.Text = row["article"].ToString();
-            nameBox.Text = row["name"].ToString();
-            descriptionBox.Text = row["describe"].ToString();
-            priceBox.Text = row["price"].ToString();
-            measureBox.Text = row["measurment"].ToString();
-            countBox.Text = row["warehouse"].ToString();
-            saleBox.Text = row["sale"].ToString();
-            imageBox.Text = row["picture"].ToString();
-            originalImagePath = imageBox.Text;
-            categoryBox.SelectedValue = row["category"];
-            manufactureBox.SelectedValue = row["manufacture"];
-            supplierBox.SelectedValue = row["supplier"];
+            try
+            {
+                DataTable table = Database.Query("select * from tovar where article=@article", new SqlParameter("@article", article));
+                if (table.Rows.Count == 0)
+                {
+                    MessageBox.Show("Выбранный товар не найден в базе данных.", "Ошибка загрузки", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Close();
+                    return;
+                }
+
+                DataRow row = table.Rows[0];
+                articleBox.Text = row["article"].ToString();
+                articleBox.ReadOnly = true;
+                nameBox.Text = row["name"].ToString();
+                descriptionBox.Text = row["describe"].ToString();
+                priceBox.Text = row["price"].ToString();
+                measureBox.Text = row["measurment"].ToString();
+                countBox.Text = row["warehouse"].ToString();
+                saleBox.Text = row["sale"].ToString();
+                imageBox.Text = row["picture"].ToString();
+                originalImagePath = imageBox.Text;
+                categoryBox.SelectedValue = row["category"];
+                manufactureBox.SelectedValue = row["manufacture"];
+                supplierBox.SelectedValue = row["supplier"];
+                LoadPreview(imageBox.Text);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Не удалось загрузить товар.\n" + ex.Message, "Ошибка загрузки", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Close();
+            }
         }
 
         private void Choose_Click(object sender, EventArgs e)
         {
             using (var dialog = new OpenFileDialog { Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp" })
             {
-                if (dialog.ShowDialog() == DialogResult.OK)
+                if (dialog.ShowDialog() != DialogResult.OK) return;
+                Directory.CreateDirectory(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images"));
+                string fileName = Path.GetFileNameWithoutExtension(dialog.FileName) + "_" + DateTime.Now.ToString("yyyyMMddHHmmss") + Path.GetExtension(dialog.FileName);
+                string target = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images", fileName);
+                using (var image = Image.FromFile(dialog.FileName))
+                using (var resized = new Bitmap(image, new Size(300, 200)))
                 {
-                    Directory.CreateDirectory(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images"));
-                    string fileName = Path.GetFileNameWithoutExtension(dialog.FileName) + "_" + DateTime.Now.ToString("yyyyMMddHHmmss") + Path.GetExtension(dialog.FileName);
-                    string target = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images", fileName);
-                    using (var image = Image.FromFile(dialog.FileName))
-                    using (var resized = new Bitmap(image, new Size(300, 200))) resized.Save(target);
-                    imageBox.Text = Path.Combine("Images", fileName);
+                    resized.Save(target);
                 }
+
+                imageBox.Text = Path.Combine("Images", fileName);
+                LoadPreview(imageBox.Text);
             }
         }
 
         private void Save_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(articleBox.Text) || string.IsNullOrWhiteSpace(nameBox.Text)) { MessageBox.Show("Заполните артикул и наименование.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
-            if (!decimal.TryParse(priceBox.Text, out decimal price) || price < 0 || !int.TryParse(countBox.Text, out int count) || count < 0 || !int.TryParse(saleBox.Text, out int sale) || sale < 0) { MessageBox.Show("Цена, количество и скидка должны быть неотрицательными числами.", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
-            string sql = article == null ? "insert into tovar(article,name,category,describe,manufacture,supplier,price,measurment,warehouse,sale,picture) values(@a,@n,@c,@d,@m,@s,@p,@me,@w,@sale,@pic)" : "update tovar set name=@n,category=@c,describe=@d,manufacture=@m,supplier=@s,price=@p,measurment=@me,warehouse=@w,sale=@sale,picture=@pic where article=@a";
+            if (!ValidateProduct(out decimal price, out int count, out int sale)) return;
+
+            string currentArticle = article ?? GetNextArticle();
+            string sql = article == null
+                ? "insert into tovar(article,name,category,describe,manufacture,supplier,price,measurment,warehouse,sale,picture) values(@a,@n,@c,@d,@m,@s,@p,@me,@w,@sale,@pic)"
+                : "update tovar set name=@n,category=@c,describe=@d,manufacture=@m,supplier=@s,price=@p,measurment=@me,warehouse=@w,sale=@sale,picture=@pic where article=@a";
+
             try
             {
-                Database.Execute(sql, new SqlParameter("@a", articleBox.Text), new SqlParameter("@n", nameBox.Text), new SqlParameter("@c", categoryBox.SelectedValue), new SqlParameter("@d", descriptionBox.Text), new SqlParameter("@m", manufactureBox.SelectedValue), new SqlParameter("@s", supplierBox.SelectedValue), new SqlParameter("@p", price), new SqlParameter("@me", measureBox.Text), new SqlParameter("@w", count), new SqlParameter("@sale", sale), new SqlParameter("@pic", imageBox.Text));
+                Database.Execute(sql,
+                    new SqlParameter("@a", currentArticle),
+                    new SqlParameter("@n", nameBox.Text.Trim()),
+                    new SqlParameter("@c", categoryBox.SelectedValue),
+                    new SqlParameter("@d", descriptionBox.Text.Trim()),
+                    new SqlParameter("@m", manufactureBox.SelectedValue),
+                    new SqlParameter("@s", supplierBox.SelectedValue),
+                    new SqlParameter("@p", price),
+                    new SqlParameter("@me", measureBox.Text.Trim()),
+                    new SqlParameter("@w", count),
+                    new SqlParameter("@sale", sale),
+                    new SqlParameter("@pic", string.IsNullOrWhiteSpace(imageBox.Text) ? "picture.png" : imageBox.Text.Trim()));
                 DeleteOldImageIfReplaced();
                 DialogResult = DialogResult.OK;
             }
@@ -123,18 +139,53 @@ namespace WindowsFormsApp1
                 MessageBox.Show("Не удалось сохранить товар. Проверьте заполнение полей и подключение к БД.\n" + ex.Message, "Ошибка сохранения", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+        private bool ValidateProduct(out decimal price, out int count, out int sale)
+        {
+            price = 0;
+            count = 0;
+            sale = 0;
+            if (string.IsNullOrWhiteSpace(nameBox.Text))
+            {
+                MessageBox.Show("Заполните наименование товара.", "Ошибка ввода", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            if (!decimal.TryParse(priceBox.Text, out price) || price < 0 || !int.TryParse(countBox.Text, out count) || count < 0 || !int.TryParse(saleBox.Text, out sale) || sale < 0)
+            {
+                MessageBox.Show("Цена, количество и скидка должны быть неотрицательными числами.", "Ошибка ввода", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            return true;
+        }
+
         private string GetNextArticle()
         {
             object value = Database.Query("select isnull(max(try_convert(int, article)), 0) + 1 as next_article from tovar").Rows[0]["next_article"];
             return value.ToString();
         }
 
+        private void LoadPreview(string relativePath)
+        {
+            string fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, string.IsNullOrWhiteSpace(relativePath) ? "picture.png" : relativePath);
+            if (productPictureBox.Image != null)
+            {
+                productPictureBox.Image.Dispose();
+                productPictureBox.Image = null;
+            }
+            if (File.Exists(fullPath))
+            {
+                using (var image = Image.FromFile(fullPath))
+                {
+                    productPictureBox.Image = new Bitmap(image);
+                }
+            }
+        }
+
         private void DeleteOldImageIfReplaced()
         {
-            if (string.IsNullOrWhiteSpace(originalImagePath) || originalImagePath == imageBox.Text) return;
+            if (string.IsNullOrWhiteSpace(originalImagePath) || originalImagePath == imageBox.Text || originalImagePath == "picture.png") return;
             string fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, originalImagePath);
             if (File.Exists(fullPath)) File.Delete(fullPath);
         }
-
     }
 }
