@@ -1,257 +1,191 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.Data;
-using System.Linq;
+using System.Data.SqlClient;
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace WindowsFormsApp1
 {
     public partial class MainForm : Form
     {
-        public DataRow UserScope { get; set; }
+        private static bool isProductEditorOpened;
+        private DataGridView productsGrid;
+        private Button addProductButton;
+        private Button deleteProductButton;
 
         public MainForm()
         {
             InitializeComponent();
+            BuildProductGrid();
         }
 
-        public MainForm(DataRow user)
+        public MainForm(DataRow user) : this()
         {
-            InitializeComponent();
-            UserScope = user;
+            if (user != null)
+            {
+                Session.UserLogin = user["login"].ToString();
+                Session.UserFullName = user.Table.Columns.Contains("name") ? user["name"].ToString() : user["full_name"].ToString();
+                Session.UserRoleId = Convert.ToInt32(user["role"]);
+            }
         }
 
-        // Имя метода соответствует тому, что указано в дизайнере
+        private void BuildProductGrid()
+        {
+            Text = "Список товаров";
+            Main_Panel.Visible = false;
+            productsGrid = new DataGridView
+            {
+                Location = Main_Panel.Location,
+                Size = Main_Panel.Size,
+                ReadOnly = true,
+                AllowUserToAddRows = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false
+            };
+            productsGrid.CellDoubleClick += ProductsGrid_CellDoubleClick;
+            productsGrid.RowPrePaint += ProductsGrid_RowPrePaint;
+            Controls.Add(productsGrid);
+
+            addProductButton = CreateSideButton("Добавить товар", 270);
+            addProductButton.Click += AddProductButton_Click;
+            Controls.Add(addProductButton);
+
+            deleteProductButton = CreateSideButton("Удалить товар", 320);
+            deleteProductButton.BackColor = Color.FromArgb(190, 60, 60);
+            deleteProductButton.Click += DeleteProductButton_Click;
+            Controls.Add(deleteProductButton);
+        }
+
+        private Button CreateSideButton(string text, int top)
+        {
+            return new Button
+            {
+                Text = text,
+                Location = new Point(1140, top),
+                Size = new Size(200, 40),
+                BackColor = Color.FromArgb(50, 120, 220),
+                FlatStyle = FlatStyle.Flat,
+                ForeColor = Color.White,
+                Font = new Font("Segoe UI", 10F, FontStyle.Bold)
+            };
+        }
+
         private void MainForms_Load(object sender, EventArgs e)
         {
-            // Приветствие
-            if (UserScope != null)
-            {
-                string fullName = UserScope["full_name"]?.ToString() ?? "Пользователь";
-                lblWelcome.Text = "Добро пожаловать, " + fullName + "!";
-            }
-            else
-            {
-                lblWelcome.Text = "Добро пожаловать!";
-            }
-
-            // Если роль = 3 (гость) – скрываем сортировку, поиск, фильтр и заказы
-            bool isGuest = (UserScope != null && UserScope["role_id"]?.ToString() == "3");
-            if (isGuest)
-            {
-                search_textbox.Visible = false;
-                Sort_combobox.Visible = false;
-                open_orders_button.Visible = false;
-                filter_label.Visible = false;
-                filter_supplier_combobox.Visible = false;
-            }
-
-            // Загружаем поставщиков в выпадающий список фильтра
+            lblWelcome.Text = Session.IsGuest ? "Гость" : Session.UserFullName;
+            search_textbox.Visible = Session.IsAdmin || Session.IsManager;
+            Sort_combobox.Visible = Session.IsAdmin || Session.IsManager;
+            filter_label.Visible = Session.IsAdmin || Session.IsManager;
+            filter_supplier_combobox.Visible = Session.IsAdmin || Session.IsManager;
+            open_orders_button.Visible = Session.IsAdmin || Session.IsManager;
+            addProductButton.Visible = Session.IsAdmin;
+            deleteProductButton.Visible = Session.IsAdmin;
             LoadSuppliers();
-
-            // Первоначальная загрузка товаров
             RefreshGoods();
         }
 
-        /// <summary>
-        /// Загружает список поставщиков в выпадающий список фильтра.
-        /// Первый элемент - "Все поставщики".
-        /// </summary>
         private void LoadSuppliers()
         {
             filter_supplier_combobox.Items.Clear();
             filter_supplier_combobox.Items.Add("Все поставщики");
-
             try
             {
-                var adapter = new user10DataSetTableAdapters.supplierTableAdapter();
-                var table = adapter.GetData();
-                foreach (DataRow row in table.Rows)
+                foreach (DataRow row in Database.Query("select name from supplier order by name").Rows)
                 {
-                    string supplierName = row["name"]?.ToString();
-                    if (!string.IsNullOrEmpty(supplierName))
-                        filter_supplier_combobox.Items.Add(supplierName);
+                    filter_supplier_combobox.Items.Add(row["name"].ToString());
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Ошибка загрузки поставщиков: " + ex.Message, "Ошибка",
-                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Не удалось загрузить поставщиков. Проверьте подключение к БД.\n" + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
 
-            if (filter_supplier_combobox.Items.Count > 0)
-                filter_supplier_combobox.SelectedIndex = 0;
+            filter_supplier_combobox.SelectedIndex = 0;
         }
 
-        /// <summary>
-        /// Обновляет список товаров с учётом текущих фильтра, поиска и сортировки.
-        /// </summary>
         private void RefreshGoods()
         {
-            Main_Panel.Controls.Clear();
-
-            // Получаем все товары
-            var adapter = new user10DataSetTableAdapters.tovarTableAdapter();
-            DataTable table = adapter.GetData();
-
-            // ---- ЗАГРУЗКА СПРАВОЧНИКОВ ДЛЯ ПОИСКА И ФИЛЬТРАЦИИ ----
-            var categories = new Dictionary<int, string>();
-            var manufacturers = new Dictionary<int, string>();
-            var suppliers = new Dictionary<int, string>();
-
             try
             {
-                var catAdapter = new user10DataSetTableAdapters.categoryTableAdapter();
-                var catTable = catAdapter.GetData();
-                foreach (DataRow row in catTable.Rows)
-                {
-                    int id = Convert.ToInt32(row[0]);
-                    string name = row[1]?.ToString() ?? "";
-                    categories[id] = name;
-                }
-
-                var manAdapter = new user10DataSetTableAdapters.manufactureTableAdapter();
-                var manTable = manAdapter.GetData();
-                foreach (DataRow row in manTable.Rows)
-                {
-                    int id = Convert.ToInt32(row[0]);
-                    string name = row[1]?.ToString() ?? "";
-                    manufacturers[id] = name;
-                }
-
-                var supAdapter = new user10DataSetTableAdapters.supplierTableAdapter();
-                var supTable = supAdapter.GetData();
-                foreach (DataRow row in supTable.Rows)
-                {
-                    int id = Convert.ToInt32(row[0]);
-                    string name = row[1]?.ToString() ?? "";
-                    suppliers[id] = name;
-                }
+                string sql = @"select t.article as [Артикул], t.picture as [Фото], t.name as [Наименование], c.name as [Категория], t.describe as [Описание],
+                       m.name as [Производитель], s.name as [Поставщик], t.price as [Цена], t.measurment as [Ед. изм.],
+                       t.warehouse as [Количество], t.sale as [Скидка]
+                       from tovar t
+                       left join category c on c.id = t.category
+                       left join manufacture m on m.id = t.manufacture
+                       left join supplier s on s.id = t.supplier
+                       where (@search = '' or lower(isnull(t.name,'') + ' ' + isnull(t.describe,'') + ' ' + isnull(c.name,'') + ' ' + isnull(m.name,'') + ' ' + isnull(s.name,'')) like @searchLike)
+                       and (@supplier = '' or s.name = @supplier)";
+                var table = Database.Query(sql,
+                    new SqlParameter("@search", search_textbox.Text.Trim().ToLower()),
+                    new SqlParameter("@searchLike", "%" + search_textbox.Text.Trim().ToLower() + "%"),
+                    new SqlParameter("@supplier", filter_supplier_combobox.SelectedItem?.ToString() == "Все поставщики" ? "" : filter_supplier_combobox.SelectedItem?.ToString() ?? ""));
+                table.DefaultView.Sort = GetSort();
+                productsGrid.DataSource = table.DefaultView;
             }
             catch (Exception ex)
             {
-                // Если справочники не загрузились, поиск и фильтр будут работать только по прямым полям
-                MessageBox.Show("Ошибка загрузки справочников: " + ex.Message, "Предупреждение",
-                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-
-            // ---- ПОИСК (по всем текстовым полям) ----
-            string searchText = search_textbox.Text.Trim().ToLower();
-            if (!string.IsNullOrEmpty(searchText))
-            {
-                var rowsWithSearch = table.AsEnumerable().Where(row =>
-                {
-                    string name = row["name"]?.ToString()?.ToLower() ?? "";
-                    string describe = row["describe"]?.ToString()?.ToLower() ?? "";
-                    string categoryName = "";
-                    string manufacturerName = "";
-                    string supplierName = "";
-
-                    int categoryId = 0, manufactureId = 0, supplierId = 0;
-                    if (int.TryParse(row["category"]?.ToString(), out categoryId))
-                        categories.TryGetValue(categoryId, out categoryName);
-                    if (int.TryParse(row["manufacture"]?.ToString(), out manufactureId))
-                        manufacturers.TryGetValue(manufactureId, out manufacturerName);
-                    if (int.TryParse(row["supplier"]?.ToString(), out supplierId))
-                        suppliers.TryGetValue(supplierId, out supplierName);
-
-                    return name.Contains(searchText) ||
-                           describe.Contains(searchText) ||
-                           categoryName.ToLower().Contains(searchText) ||
-                           manufacturerName.ToLower().Contains(searchText) ||
-                           supplierName.ToLower().Contains(searchText);
-                });
-
-                if (rowsWithSearch.Any())
-                    table = rowsWithSearch.CopyToDataTable();
-                else
-                    table = table.Clone(); // пустая таблица с той же схемой
-            }
-
-            // ---- ФИЛЬТР ПО ПОСТАВЩИКУ ----
-            string selectedSupplier = filter_supplier_combobox.SelectedItem?.ToString();
-            if (selectedSupplier != null && selectedSupplier != "Все поставщики")
-            {
-                var rowsWithSupplier = table.AsEnumerable().Where(row =>
-                {
-                    int supplierId = 0;
-                    if (int.TryParse(row["supplier"]?.ToString(), out supplierId))
-                    {
-                        string supplierName = "";
-                        suppliers.TryGetValue(supplierId, out supplierName);
-                        return supplierName == selectedSupplier;
-                    }
-                    return false;
-                });
-
-                if (rowsWithSupplier.Any())
-                    table = rowsWithSupplier.CopyToDataTable();
-                else
-                    table = table.Clone();
-            }
-
-            // ---- СОРТИРОВКА ----
-            string sortField = "";
-            string sortDirection = "ASC";
-
-            if (Sort_combobox.SelectedIndex >= 0 && Sort_combobox.SelectedItem != null)
-            {
-                string selectedSort = Sort_combobox.SelectedItem.ToString();
-                if (selectedSort.Contains("Цене"))
-                {
-                    sortField = "price";
-                    sortDirection = selectedSort.Contains("убывание") ? "DESC" : "ASC";
-                }
-                else if (selectedSort.Contains("Количеству"))
-                {
-                    sortField = "warehouse";
-                    sortDirection = selectedSort.Contains("убывание") ? "DESC" : "ASC";
-                }
-            }
-
-            if (!string.IsNullOrEmpty(sortField))
-                table.DefaultView.Sort = sortField + " " + sortDirection;
-
-            // ---- ВЫВОД КАРТОЧЕК ----
-            foreach (DataRowView rowView in table.DefaultView)
-            {
-                card productCard = new card(rowView.Row);
-                Main_Panel.Controls.Add(productCard);
-            }
-
-            // Если товаров нет – показываем сообщение
-            if (Main_Panel.Controls.Count == 0)
-            {
-                Label noDataLabel = new Label
-                {
-                    Text = "Товары не найдены",
-                    Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
-                    ForeColor = System.Drawing.Color.Gray,
-                    AutoSize = true,
-                    Location = new System.Drawing.Point(50, 50)
-                };
-                Main_Panel.Controls.Add(noDataLabel);
+                MessageBox.Show("Не удалось получить список товаров.\n" + ex.Message, "Ошибка загрузки", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        // События, которые вызывают обновление списка
+        private string GetSort()
+        {
+            string selectedSort = Sort_combobox.SelectedItem?.ToString() ?? "";
+            if (selectedSort.Contains("Цене")) return "[Цена] " + (selectedSort.Contains("убывание") ? "DESC" : "ASC");
+            if (selectedSort.Contains("Количеству")) return "[Количество] " + (selectedSort.Contains("убывание") ? "DESC" : "ASC");
+            return "";
+        }
+
+        private void ProductsGrid_RowPrePaint(object sender, DataGridViewRowPrePaintEventArgs e)
+        {
+            var row = productsGrid.Rows[e.RowIndex];
+            int count = Convert.ToInt32(row.Cells["Количество"].Value == DBNull.Value ? 0 : row.Cells["Количество"].Value);
+            int sale = Convert.ToInt32(row.Cells["Скидка"].Value == DBNull.Value ? 0 : row.Cells["Скидка"].Value);
+            row.DefaultCellStyle.BackColor = count <= 0 ? Color.LightBlue : sale > 17 ? ColorTranslator.FromHtml("#FFDEAD") : Color.White;
+            row.Cells["Цена"].Style.ForeColor = sale > 0 ? Color.Red : Color.Black;
+            row.Cells["Цена"].Style.Font = sale > 0 ? new Font(productsGrid.Font, FontStyle.Strikeout) : productsGrid.Font;
+        }
+
+        private void ProductsGrid_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (!Session.IsAdmin || e.RowIndex < 0 || isProductEditorOpened) return;
+            isProductEditorOpened = true;
+            using (var form = new ProductEditForm(productsGrid.Rows[e.RowIndex].Cells["Артикул"].Value.ToString())) form.ShowDialog();
+            isProductEditorOpened = false;
+            RefreshGoods();
+        }
+
+        private void AddProductButton_Click(object sender, EventArgs e)
+        {
+            if (isProductEditorOpened) return;
+            isProductEditorOpened = true;
+            using (var form = new ProductEditForm(null)) form.ShowDialog();
+            isProductEditorOpened = false;
+            RefreshGoods();
+        }
+
+        private void DeleteProductButton_Click(object sender, EventArgs e)
+        {
+            if (productsGrid.CurrentRow == null) return;
+            string article = productsGrid.CurrentRow.Cells["Артикул"].Value.ToString();
+            if (Database.Query("select id from orders where article=@article", new SqlParameter("@article", article)).Rows.Count > 0)
+            {
+                MessageBox.Show("Товар нельзя удалить, потому что он присутствует в заказе.", "Запрещено", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (MessageBox.Show("Удалить выбранный товар без возможности восстановления?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                Database.Execute("delete from tovar where article=@article", new SqlParameter("@article", article));
+                RefreshGoods();
+            }
+        }
+
         private void search_textbox_TextChanged(object sender, EventArgs e) => RefreshGoods();
         private void Sort_combobox_SelectedIndexChanged(object sender, EventArgs e) => RefreshGoods();
         private void filter_supplier_combobox_SelectedIndexChanged(object sender, EventArgs e) => RefreshGoods();
-
-        // Кнопка "Мои заказы"
-        private void open_orders_button_Click(object sender, EventArgs e)
-        {
-            MessageBox.Show("Форма заказов будет реализована позже", "Информация",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        // Кнопка "Выйти"
-        private void BtnLogout_Click(object sender, EventArgs e)
-        {
-            this.Close();
-            LoginForm login = new LoginForm();
-            login.Show();
-        }
+        private void open_orders_button_Click(object sender, EventArgs e) { using (var form = new OrdersForm()) form.ShowDialog(); }
+        private void BtnLogout_Click(object sender, EventArgs e) { Session.Logout(); new LoginForm().Show(); Close(); }
     }
 }
